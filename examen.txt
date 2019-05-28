@@ -1,1 +1,379 @@
-erickCupueranfernano
+import React, { PureComponent } from 'react';
+import { connect } from 'react-redux';
+import { Link } from "react-router-dom";
+import { bindActionCreators } from 'redux';
+
+import { 
+    getCountries, 
+    getFavouritesHome, 
+    changeFavouritesHome 
+} from '../../actions/utils';
+
+import {
+    light, 
+    ktuin_black, 
+    border_color, 
+    ktuin_orange, 
+    color_yellow_star, 
+    color_blue_principal
+} from '../../utils/variables';
+import {
+    Wrapper,
+    HomeWrapper,
+    ListWrapper,
+    ContainerButtons,
+    SearchContainer,
+    LinkContainer
+} from './home_styles';
+import { normalizeText } from '../../utils/functions';
+import homeButtons from '../router/routes-permissions.json';
+import { Button } from '../../components/input/button/button';
+import { Header } from '../../components/common/header/header';
+import { StarComponent } from '../../components/common/home/star';
+import { MenuButton } from '../../components/common/home/menu_buttons';
+import { SearchComponent } from '../../components/input/search/search';
+
+const type_normal_lang = {
+    cliente: 'Cliente',
+    servicio_tecnico: 'Servicio Técnico',
+    recompras: 'Recompras',
+    renting: 'Renting',
+    atencion_cliente: 'Atención al cliente',
+    maccare: 'Maccare',
+    analytics: 'Analítica'
+}
+
+class HomeComponent extends PureComponent {
+    constructor(props) {
+        super(props);
+        this.state = {
+            search: '',
+            firstEntry: true,
+            selected: 'TODO'
+        }
+    }
+
+    componentDidMount() {
+        const {user} = this.props;
+        !this.props.utils.countries && this.props.getCountries();
+        this.props.getFavouritesHome(user.usuario);
+    }
+
+    componentWillReceiveProps(props) {
+        const { favoritos } = props.utils;
+        const { selected, firstEntry } = this.state;
+
+        let select = selected;
+        let first = firstEntry;
+        
+        if (firstEntry && favoritos) {
+            first = false;
+            select = selected !== 'favoritos' && favoritos?.length > 0 ? 'favoritos' : selected;
+        }
+
+        this.setState({ 
+            favoritos,
+            firstEntry: first,
+            selected: select
+        });
+    }
+
+    isValid(val, data) {
+        const str1 = normalizeText(val.toString().toLowerCase());
+        const str2 = normalizeText(data.toString().toLowerCase());
+
+        return str1.indexOf(str2) !== -1;
+    }
+
+    setStar(fav) {
+        const { favoritos } = this.state;
+        const { user, utils } = this.props;
+
+        const pos = favoritos.indexOf(fav); 
+        pos === -1 ? favoritos.push(fav) : favoritos.splice(pos, 1);
+
+        this.setState({ favoritos }, () => {
+            const method = utils.noFavoritos ? 'insert' : 'update';
+            this.props.changeFavouritesHome(method, user.usuario, favoritos);
+        });
+    }
+
+    getColor(type) {
+        switch (type) {
+            case 'cliente':
+                return color_blue_principal;
+            case 'servicio_tecnico':
+                return 'green';
+            case 'recompras':
+                return ktuin_orange;
+            case 'renting':
+                return 'orange';
+            case 'atencion_cliente':
+                return '#4d80f9';
+            case 'maccare':
+                return 'red';
+            default:
+                return ktuin_orange;
+        }
+    }
+
+    getList() {
+        const { user } = this.props;
+        const { selected } = this.state;
+
+        const list = [];
+        const types = [];
+
+        homeButtons.data.forEach((element, loop) => {
+            if (loop === 0) {
+                const allChecked = selected === "TODO";
+                const favChecked = selected === "favoritos";
+                list.push(<Button 
+                    key="favoritos"
+                    text="MIS FAVORITOS"
+                    icon="fas fa-star"
+                    color={favChecked ? light : ktuin_black}
+                    border={favChecked ? color_yellow_star : border_color}
+                    background={favChecked ? color_yellow_star : light} 
+                    userClick={() => this.setState({ selected: "favoritos" })}/>)
+                list.push(<Button 
+                    key="todo" text="TODO"
+                    color={allChecked ? light : ktuin_black}
+                    background={allChecked ? ktuin_orange : light} 
+                    border={allChecked ? ktuin_orange : border_color}
+                    userClick={() => this.setState({ selected: "TODO" })}/>)
+            }
+            if (element.type && 
+                types.indexOf(element.type) === -1 && 
+                element['need-role'].indexOf(user.role) !== -1 &&
+                (element['need-user'] ? element['need-user'].indexOf(user.usuario) !== -1 : true) 
+            ) {
+                let color = this.getColor(element.type);
+                const selection = selected === element.type;
+                list.push(<Button 
+                    key={element.type}
+                    text={type_normal_lang[element.type]}
+                    background={selection ? color : light} 
+                    color={selection ? light : ktuin_black}
+                    border={selection ? color : border_color} 
+                    userClick={() => this.setState({ selected: element.type })} />)
+                types.push(element.type);
+            }
+        })
+        return list;
+    }
+
+    linkAccessible(button) {
+        const { user } = this.props;
+        const { search, selected } = this.state;
+        return (
+            button['visible-home'] &&
+            button['need-role'].indexOf(user.role) !== -1 &&
+            (button['need-user'] ? button['need-user'].indexOf(user.usuario) !== -1 : true) &&
+            (selected === 'TODO' || selected === button.type) &&
+            (search === '' || this.isValid(button.route, search))
+        );
+    }
+
+    getButtons() {
+        const buttonsArray = [];
+        const { user } = this.props;
+        const { selected, favoritos } = this.state;
+
+        homeButtons.data.forEach(button => {
+            if(user) {
+                const {route, icon, path, hash, type, linkExtern} = button;
+                if (this.linkAccessible(button)) {
+                    const menuButton = <MenuButton icon={icon} text={route} type={type} />;
+                    let typeOfLink = <Link to={{ pathname: path, hash: hash }}>{menuButton}</Link>;
+                    if (linkExtern) typeOfLink = <a href={path}>{menuButton}</a>
+
+                    buttonsArray.push(<LinkContainer key={path + hash}>
+                        {typeOfLink}
+                        <StarComponent star={favoritos && favoritos?.indexOf(route) !== -1} clickFunction={() => this.setStar(route)} />
+                    </LinkContainer>);
+                }
+            }
+        });
+
+        if (selected === 'favoritos') {
+            favoritos?.forEach(fav => {
+                homeButtons.data.forEach(button => {
+                    const { route, icon, path, hash, type, linkExtern } = button;
+                    if (route === fav) {
+                        const menuButton = <MenuButton icon={icon} text={route} type={type} />;
+                        let typeOfLink = <Link to={{ pathname: path, hash: hash }}>{menuButton}</Link>;
+                        if (linkExtern) typeOfLink = <a href={path}>{menuButton}</a>
+                        buttonsArray.push(<LinkContainer key={path + hash}>
+                            {typeOfLink}
+                            <StarComponent star={favoritos?.indexOf(route) !== -1} clickFunction={() => this.setStar(route)} />
+                        </LinkContainer>);
+                    }
+                })
+            });
+
+            if(!favoritos || favoritos.length === 0) {
+                buttonsArray.push(<h3 key="1" style={{ opacity: .4, fontSize: '24px' }}>
+                    No tienes favoritos guardados
+                </h3>);
+            }
+        }
+        return buttonsArray;
+    }
+
+    render() { 
+        const {search} = this.state;
+        const lista = this.getList();
+
+        return (<>
+            <Header />
+            <Wrapper>
+                <SearchContainer>
+                    <SearchComponent
+                        value={search}
+                        placeholder="¿Dónde quieres ir?"
+                        onChange={e => this.setState({ search: e.target.value })} />
+                </SearchContainer>
+                <HomeWrapper>
+                    <ListWrapper>
+                        {lista}
+                    </ListWrapper>
+                    <ContainerButtons>
+                        {this.getButtons()}
+                    </ContainerButtons>
+                </HomeWrapper>
+            </Wrapper>
+        </>)
+    }
+}
+
+const mapStateToProps = ({user, utils}) => {return {user, utils}};
+const mapDispatchToProps = dispatch => bindActionCreators({ 
+    getCountries, 
+    getFavouritesHome, 
+    changeFavouritesHome 
+}, dispatch);
+
+export default connect(mapStateToProps, mapDispatchToProps)(HomeComponent);
+
+
+
+
+
+///////////styles//////////////
+
+//////////////////////////////
+import styled, { keyframes } from 'styled-components';
+import { fadeIn } from 'react-animations';
+import { ALL_MOBILE, ktuin_black, border_color, light, ktuin_orange, ONLY_TABLET } from '../../utils/variables';
+import { ContainerWithoutBG } from '../../utils/general-styles';
+
+const FadeIn = keyframes`${fadeIn}`;
+
+export const Wrapper = styled(ContainerWithoutBG)`
+    margin: auto;
+    max-width: 1280px;
+`;
+
+export const HomeWrapper = styled.div`
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between; 
+    @media(max-width: 991px) {
+        flex-direction: column;
+    }
+`;
+
+export const ListWrapper = styled.div`
+    width: 20%;
+    display: ${prop => prop.hide && 'none'};
+    @media(max-width: 991px) and (min-width: 767px) {
+        width: 98%;
+        margin: 0 auto 30px;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        margin-bottom: 30px;
+        justify-content: flex-start;
+        button {
+            max-width: 32%;
+            margin-right: 1.5%;
+            &:nth-child(3),
+            &:nth-child(6),
+            &:nth-child(9),
+            &:nth-child(12),
+            &:nth-child(15),
+            &:nth-child(18),
+            &:nth-child(21) {
+                margin-right: 0;
+            }
+        }
+    }
+    ${ALL_MOBILE} {
+        width: 98%;
+        margin: 0 auto 30px;
+        flex-direction: column;
+        button {
+            width: 100%;
+        }
+    }
+    button {
+        margin-bottom: 5px;
+        text-transform: uppercase;
+    }
+`;
+
+
+export const ContainerButtons = styled.div`
+    width: ${prop => prop.hide ? '100%' : '78%'};
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    @media(max-width: 991px) {
+        width: 100%;
+    }
+    & > div {
+        margin: 0 15px 30px;
+        @media(min-width: 1080px) {
+            width: 32%;
+            display: block;
+            margin: 0 5px 30px;
+        }
+        ${ALL_MOBILE} {
+            width: 100%;
+            margin: 0 5px;
+        }
+    }
+    a {
+        width: 100%;
+        animation: .2s ${FadeIn};
+        color: ${ktuin_black};
+        text-decoration: none;
+    }
+`;
+
+export const SearchContainer = styled.div`
+    width: 100%;
+    max-width: 1280px;
+    margin: 90px auto 30px;
+`;
+
+export const LinkContainer = styled.div`
+    position: relative;
+`;
+
+export const StarContainer = styled.div`
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    border-radius: 40px;
+    ${ALL_MOBILE} {
+        top: 46%;
+        transform: translateY(-50%);
+    }
+    & > button {
+        border-radius: 40px;
+    }
+`;
